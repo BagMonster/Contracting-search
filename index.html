@@ -426,7 +426,7 @@ function setStatus(text, cls){
 
 const loadMoreBtn = document.getElementById('loadMoreBtn');
 const typeFilterEl = document.getElementById('typeFilter');
-let activeSearch = null; // { baseParams, perType, combos:[{naicsCode,saCode,label,offset,exhausted,total}], resultsMap }
+let activeSearch = null; // { baseParams, perType, combos:[...], seenSet, currentBatch }
 let typeFilterVal = 'all';
 
 typeFilterEl.querySelectorAll('.seg-btn').forEach(btn=>{
@@ -446,10 +446,16 @@ function buildComboUrl(combo){
   return `${API_BASE}?${p.toString()}`;
 }
 
+// Fetches the next page per active filter combo and returns only the notices
+// that haven't already been shown this search and aren't already saved.
+// Does NOT mark anything seen yet — that happens once it's actually rendered,
+// so items hidden by the type filter stay eligible to show up later.
 async function fetchActiveSearchPage(){
   const pending = activeSearch.combos.filter(c => !c.exhausted);
   const settled = await Promise.allSettled(pending.map(c => fetchOpportunities(buildComboUrl(c))));
   const hardErrors = [];
+  const roundMap = new Map(); // dedupes within this one round (e.g. a notice matching 2 combos)
+
   settled.forEach((res, i)=>{
     const combo = pending[i];
     if(res.status === 'fulfilled'){
@@ -457,7 +463,7 @@ async function fetchActiveSearchPage(){
       const batch = data.opportunitiesData || [];
       batch.forEach(opp => {
         if(opp.active === 'No') return; // belt-and-suspenders: drop anything not currently active
-        activeSearch.resultsMap.set(opp.noticeId, opp);
+        roundMap.set(opp.noticeId, opp);
       });
       combo.offset += batch.length;
       if(typeof data.totalRecords === 'number') combo.total = data.totalRecords;
@@ -467,16 +473,34 @@ async function fetchActiveSearchPage(){
       hardErrors.push(`${combo.label}: ${res.reason && res.reason.message ? res.reason.message : res.reason}`);
     }
   });
+
+  activeSearch.currentBatch = Array.from(roundMap.values())
+    .filter(opp => !activeSearch.seenSet.has(opp.noticeId) && !savedMap[opp.noticeId]);
+  activeSearch.lastRoundRaw = roundMap.size;
+
   return hardErrors;
 }
 
 function renderSearchState(){
-  const all = Array.from(activeSearch.resultsMap.values());
-  const visible = typeFilterVal === 'all' ? all : all.filter(o => classify(o) === typeFilterVal);
-  const hiddenUncategorized = typeFilterVal !== 'all' ? all.filter(o => classify(o) === 'unknown').length : 0;
+  const batch = activeSearch.currentBatch || []; // already excludes seen-this-session + saved
+  const visible = typeFilterVal === 'all' ? batch : batch.filter(o => classify(o) === typeFilterVal);
 
-  metaEl.textContent = `${visible.length} of ${all.length} loaded opportunit${all.length===1?'y':'ies'} shown` +
-    (hiddenUncategorized ? ` (${hiddenUncategorized} uncategorized hidden by this filter)` : '') + '.';
+  // Only mark things "seen" once they're actually shown — items hidden by the
+  // type filter right now stay eligible to appear if you switch filters later.
+  visible.forEach(opp => activeSearch.seenSet.add(opp.noticeId));
+
+  const hiddenByTypeFilter = batch.length - visible.length;
+
+  if(activeSearch.lastRoundRaw === 0){
+    metaEl.textContent = 'No more matching results from SAM.gov for these filters.';
+  } else if(batch.length === 0){
+    metaEl.textContent = 'No new opportunities in this batch — everything here was already seen or saved.';
+  } else if(visible.length === 0){
+    metaEl.textContent = `0 shown — ${hiddenByTypeFilter} hidden by the ${typeFilterVal} filter. Try switching it.`;
+  } else {
+    metaEl.textContent = `${visible.length} new opportunit${visible.length===1?'y':'ies'} shown` +
+      (hiddenByTypeFilter ? ` (${hiddenByTypeFilter} more hidden by the ${typeFilterVal} filter).` : '.');
+  }
 
   renderResults(sortOpps(visible));
 
@@ -559,7 +583,7 @@ form.addEventListener('submit', async (e)=>{
     if(!proceed){ return; }
   }
 
-  activeSearch = { baseParams, perType, combos, resultsMap: new Map() };
+  activeSearch = { baseParams, perType, combos, seenSet: new Set(), currentBatch: [], lastRoundRaw: 0 };
 
   searchBtn.disabled = true;
   searchBtn.textContent = 'Searching…';
@@ -570,7 +594,7 @@ form.addEventListener('submit', async (e)=>{
   searchBtn.disabled = false;
   searchBtn.textContent = 'Search SAM.gov';
 
-  if(activeSearch.resultsMap.size === 0 && hardErrors.length === combos.length){
+  if(activeSearch.lastRoundRaw === 0 && hardErrors.length === combos.length){
     setStatus(
       'Every request failed. Most likely causes: an invalid/expired API key, a SAM.gov rate limit, or your browser blocking the cross-origin request (CORS). ' +
       'Details: ' + hardErrors.join(' | '),
@@ -579,7 +603,7 @@ form.addEventListener('submit', async (e)=>{
     return;
   }
 
-  if(activeSearch.resultsMap.size === 0){
+  if(activeSearch.lastRoundRaw === 0){
     setStatus('No opportunities matched these filters in this date range.', 'empty');
     return;
   }
