@@ -97,6 +97,14 @@
     border-radius:8px; font-size:13.5px; font-weight:700; color:var(--ink-soft); cursor:pointer; font-family:var(--sans); }
   .tab-btn.active{ background:var(--ink); color:#fff; border-color:var(--ink); }
 
+  .seg-toggle{ display:flex; gap:6px; margin-bottom:12px; }
+  .seg-btn{ flex:1; padding:8px; border:1px solid var(--line); background:var(--card);
+    border-radius:7px; font-size:12.5px; font-weight:700; color:var(--ink-soft); cursor:pointer; font-family:var(--sans); }
+  .seg-btn.active{ background:var(--ink); color:#fff; border-color:var(--ink); }
+
+  .btn-loadmore{ background:var(--card); color:var(--ink); border:1px solid var(--line); width:100%; margin-top:4px; }
+  .btn-loadmore:disabled{ opacity:.6; cursor:default; }
+
   .empty-note{ background:var(--gray-bg); color:var(--ink-soft); padding:12px 14px; border-radius:8px; font-size:14px; }
 
   .desc-content{ margin-top:10px; padding-top:10px; border-top:1px dashed var(--line); font-size:13.5px;
@@ -192,8 +200,14 @@
   </div>
 
   <div id="resultsPane">
+    <div class="seg-toggle" id="typeFilter">
+      <button type="button" class="seg-btn active" data-val="all">All</button>
+      <button type="button" class="seg-btn" data-val="service">Services</button>
+      <button type="button" class="seg-btn" data-val="product">Products</button>
+    </div>
     <div id="resultsMeta" class="results-meta"></div>
     <div id="results"></div>
+    <button type="button" class="btn btn-loadmore" id="loadMoreBtn" style="display:none;">Load more</button>
   </div>
 
   <div id="savedPane" style="display:none;">
@@ -280,6 +294,7 @@ function trimOpp(opp){
     responseDeadLine: opp.responseDeadLine || null,
     typeOfSetAsideDescription: opp.typeOfSetAsideDescription || opp.setAside || null,
     naicsCode: opp.naicsCode || '',
+    classificationCode: opp.classificationCode || null,
     uiLink: opp.uiLink || '',
     description: opp.description || '',
     active: opp.active || 'Yes',
@@ -344,14 +359,7 @@ function renderSavedPane(){
     renderSavedPane();
   });
 
-  const sorted = ids.map(id=>savedMap[id]).sort((a,b)=>{
-    const da = a.responseDeadLine ? new Date(a.responseDeadLine.replace(' ','T')) : null;
-    const db = b.responseDeadLine ? new Date(b.responseDeadLine.replace(' ','T')) : null;
-    if(da && db) return da - db;
-    if(da) return -1;
-    if(db) return 1;
-    return new Date(b.postedDate) - new Date(a.postedDate);
-  });
+  const sorted = sortOpps(ids.map(id=>savedMap[id]));
   sorted.forEach(opp => list.appendChild(buildCard(opp, { saveToggle:false, removeBtn:true, refreshBtn:true })));
 }
 
@@ -362,8 +370,44 @@ function toApiDate(yyyyMmDd){
 }
 function stripHtml(s){
   if(!s) return '';
-  return s.replace(/<[^>]*>/g,' ').replace(/&nbsp;/g,' ').replace(/&amp;/g,'&')
-    .replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/\s+\n/g,'\n').replace(/[ \t]{2,}/g,' ').trim();
+  return s
+    .replace(/<\s*(script|style)[^>]*>[\s\S]*?<\s*\/\s*\1\s*>/gi, ' ') // drop script/style blocks entirely
+    .replace(/<\s*li[^>]*>/gi, '\n• ')                                 // list items become bullet lines
+    .replace(/<\s*\/\s*(p|div|tr|h[1-6])\s*>/gi, '\n\n')               // block closes become paragraph breaks
+    .replace(/<\s*br\s*\/?>/gi, '\n')                                  // explicit line breaks
+    .replace(/<[^>]*>/g, ' ')                                          // strip any remaining tags
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&rsquo;|&lsquo;/gi, "'")
+    .replace(/&rdquo;|&ldquo;/gi, '"')
+    .replace(/&mdash;/gi, '—')
+    .replace(/&ndash;/gi, '–')
+    .replace(/&hellip;/gi, '…')
+    .replace(/[ \t]{2,}/g, ' ')        // collapse runs of spaces/tabs
+    .replace(/[ \t]*\n[ \t]*/g, '\n')  // trim spaces hugging line breaks
+    .replace(/\n{3,}/g, '\n\n')        // collapse big gaps to one blank line
+    .trim();
+}
+
+function sortOpps(list){
+  return list.slice().sort((a,b)=>{
+    const da = a.responseDeadLine ? new Date(a.responseDeadLine.replace(' ','T')) : null;
+    const db = b.responseDeadLine ? new Date(b.responseDeadLine.replace(' ','T')) : null;
+    if(!da && !db) return new Date(b.postedDate) - new Date(a.postedDate); // both undated: newest posted first
+    if(!da) return -1; // no deadline yet (e.g. presolicitation) = treated as furthest out
+    if(!db) return 1;
+    return db - da; // furthest-out deadline first, soonest last
+  });
+}
+
+function classify(opp){
+  const code = opp.classificationCode;
+  if(!code) return 'unknown';
+  return /^[A-Za-z]/.test(String(code).trim()) ? 'service' : 'product';
 }
 
 const API_BASE = 'https://api.sam.gov/opportunities/v2/search';
@@ -380,10 +424,83 @@ function setStatus(text, cls){
   statusEl.textContent = text || '';
 }
 
+const loadMoreBtn = document.getElementById('loadMoreBtn');
+const typeFilterEl = document.getElementById('typeFilter');
+let activeSearch = null; // { baseParams, perType, combos:[{naicsCode,saCode,label,offset,exhausted,total}], resultsMap }
+let typeFilterVal = 'all';
+
+typeFilterEl.querySelectorAll('.seg-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    typeFilterEl.querySelectorAll('.seg-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    typeFilterVal = btn.dataset.val;
+    if(activeSearch) renderSearchState();
+  });
+});
+
+function buildComboUrl(combo){
+  const p = new URLSearchParams(activeSearch.baseParams);
+  if(combo.naicsCode) p.set('ncode', combo.naicsCode);
+  if(combo.saCode) p.set('typeOfSetAside', combo.saCode);
+  p.set('offset', String(combo.offset));
+  return `${API_BASE}?${p.toString()}`;
+}
+
+async function fetchActiveSearchPage(){
+  const pending = activeSearch.combos.filter(c => !c.exhausted);
+  const settled = await Promise.allSettled(pending.map(c => fetchOpportunities(buildComboUrl(c))));
+  const hardErrors = [];
+  settled.forEach((res, i)=>{
+    const combo = pending[i];
+    if(res.status === 'fulfilled'){
+      const data = res.value;
+      const batch = data.opportunitiesData || [];
+      batch.forEach(opp => {
+        if(opp.active === 'No') return; // belt-and-suspenders: drop anything not currently active
+        activeSearch.resultsMap.set(opp.noticeId, opp);
+      });
+      combo.offset += batch.length;
+      if(typeof data.totalRecords === 'number') combo.total = data.totalRecords;
+      if(batch.length < activeSearch.perType) combo.exhausted = true; // no more pages for this combo
+    } else {
+      combo.exhausted = true;
+      hardErrors.push(`${combo.label}: ${res.reason && res.reason.message ? res.reason.message : res.reason}`);
+    }
+  });
+  return hardErrors;
+}
+
+function renderSearchState(){
+  const all = Array.from(activeSearch.resultsMap.values());
+  const visible = typeFilterVal === 'all' ? all : all.filter(o => classify(o) === typeFilterVal);
+  const hiddenUncategorized = typeFilterVal !== 'all' ? all.filter(o => classify(o) === 'unknown').length : 0;
+
+  metaEl.textContent = `${visible.length} of ${all.length} loaded opportunit${all.length===1?'y':'ies'} shown` +
+    (hiddenUncategorized ? ` (${hiddenUncategorized} uncategorized hidden by this filter)` : '') + '.';
+
+  renderResults(sortOpps(visible));
+
+  const moreAvailable = activeSearch.combos.some(c => !c.exhausted);
+  loadMoreBtn.style.display = moreAvailable ? '' : 'none';
+  loadMoreBtn.disabled = false;
+  loadMoreBtn.textContent = 'Load more';
+}
+
+loadMoreBtn.addEventListener('click', async ()=>{
+  loadMoreBtn.disabled = true;
+  loadMoreBtn.textContent = 'Loading…';
+  const hardErrors = await fetchActiveSearchPage();
+  if(hardErrors.length){
+    setStatus('Some filter combinations stopped loading: ' + hardErrors.join(' | '), 'warn');
+  }
+  renderSearchState();
+});
+
 form.addEventListener('submit', async (e)=>{
   e.preventDefault();
   resultsEl.innerHTML = '';
   metaEl.textContent = '';
+  loadMoreBtn.style.display = 'none';
   setStatus('','');
 
   const apiKey = document.getElementById('apiKey').value.trim();
@@ -418,7 +535,6 @@ form.addEventListener('submit', async (e)=>{
   baseParams.set('postedFrom', toApiDate(postedFrom));
   baseParams.set('postedTo', toApiDate(postedTo));
   baseParams.set('limit', String(perType));
-  baseParams.set('offset', '0');
   if(keyword) baseParams.set('title', keyword);
   if(state) baseParams.set('state', state);
   if(rdlFrom) baseParams.set('rdlfrom', toApiDate(rdlFrom));
@@ -430,7 +546,10 @@ form.addEventListener('submit', async (e)=>{
   const naicsList = naicsCodes.length ? naicsCodes : [null];
   const setAsideList = setAsideCodes.length ? setAsideCodes : [null];
   const combos = [];
-  naicsList.forEach(naicsCode => setAsideList.forEach(saCode => combos.push({ naicsCode, saCode })));
+  naicsList.forEach(naicsCode => setAsideList.forEach(saCode => {
+    const label = [naicsCode ? `NAICS ${naicsCode}` : null, saCode || null].filter(Boolean).join(' / ') || 'All types';
+    combos.push({ naicsCode, saCode, label, offset:0, exhausted:false, total:null });
+  }));
 
   if(combos.length > 40){
     const proceed = confirm(
@@ -440,44 +559,18 @@ form.addEventListener('submit', async (e)=>{
     if(!proceed){ return; }
   }
 
-  const requests = combos.map(({naicsCode, saCode})=>{
-    const p = new URLSearchParams(baseParams);
-    if(naicsCode) p.set('ncode', naicsCode);
-    if(saCode) p.set('typeOfSetAside', saCode);
-    const label = [naicsCode ? `NAICS ${naicsCode}` : null, saCode || null].filter(Boolean).join(' / ') || 'All types';
-    return { label, url: `${API_BASE}?${p.toString()}` };
-  });
+  activeSearch = { baseParams, perType, combos, resultsMap: new Map() };
 
   searchBtn.disabled = true;
   searchBtn.textContent = 'Searching…';
-  setStatus(`Querying SAM.gov (${requests.length} request${requests.length>1?'s':''})…`, 'loading');
+  setStatus(`Querying SAM.gov (${combos.length} request${combos.length>1?'s':''})…`, 'loading');
 
-  const settled = await Promise.allSettled(requests.map(r => fetchOpportunities(r.url)));
+  const hardErrors = await fetchActiveSearchPage();
 
   searchBtn.disabled = false;
   searchBtn.textContent = 'Search SAM.gov';
 
-  let merged = new Map();
-  let truncatedTypes = [];
-  let hardErrors = [];
-
-  settled.forEach((res, i)=>{
-    const label = requests[i].label;
-    if(res.status === 'fulfilled'){
-      const data = res.value;
-      (data.opportunitiesData || []).forEach(opp => {
-        if(opp.active === 'No') return; // belt-and-suspenders: drop anything not currently active
-        merged.set(opp.noticeId, opp);
-      });
-      if(typeof data.totalRecords === 'number' && data.totalRecords > perType){
-        truncatedTypes.push(`${label} (${data.totalRecords} found, showing ${perType})`);
-      }
-    } else {
-      hardErrors.push(`${label}: ${res.reason && res.reason.message ? res.reason.message : res.reason}`);
-    }
-  });
-
-  if(merged.size === 0 && hardErrors.length === requests.length){
+  if(activeSearch.resultsMap.size === 0 && hardErrors.length === combos.length){
     setStatus(
       'Every request failed. Most likely causes: an invalid/expired API key, a SAM.gov rate limit, or your browser blocking the cross-origin request (CORS). ' +
       'Details: ' + hardErrors.join(' | '),
@@ -486,7 +579,7 @@ form.addEventListener('submit', async (e)=>{
     return;
   }
 
-  if(merged.size === 0){
+  if(activeSearch.resultsMap.size === 0){
     setStatus('No opportunities matched these filters in this date range.', 'empty');
     return;
   }
@@ -497,19 +590,7 @@ form.addEventListener('submit', async (e)=>{
     setStatus('','');
   }
 
-  const list = Array.from(merged.values()).sort((a,b)=>{
-    const da = a.responseDeadLine ? new Date(a.responseDeadLine.replace(' ','T')) : null;
-    const db = b.responseDeadLine ? new Date(b.responseDeadLine.replace(' ','T')) : null;
-    if(da && db) return da - db;
-    if(da) return -1;
-    if(db) return 1;
-    return new Date(b.postedDate) - new Date(a.postedDate);
-  });
-
-  metaEl.textContent = `${list.length} unique opportunit${list.length===1?'y':'ies'} found.` +
-    (truncatedTypes.length ? ` More available than shown for: ${truncatedTypes.join('; ')}.` : '');
-
-  renderResults(list);
+  renderSearchState();
 });
 
 async function fetchOpportunities(url){
@@ -547,6 +628,7 @@ function renderResults(list){
 function buildCard(opp, opts){
   const due = dueInfo(opp.responseDeadLine);
   const setAsideLabel = opp.typeOfSetAsideDescription || opp.setAside || 'No set-aside listed';
+  const typeCls = classify(opp);
   const isSaved = !!savedMap[opp.noticeId];
   const card = document.createElement('div');
   card.className = `card ${due.cls}`;
@@ -557,6 +639,7 @@ function buildCard(opp, opts){
       <span class="badge">${escapeHtml(opp.solicitationNumber ? opp.solicitationNumber.trim() : 'No solicitation #')}</span>
       <span class="badge ${due.badgeCls}">${escapeHtml(due.text)}</span>
       <span class="badge">${escapeHtml(setAsideLabel)}</span>
+      ${typeCls !== 'unknown' ? `<span class="badge">${typeCls === 'service' ? 'Service' : 'Product'}</span>` : ''}
       ${opp.naicsCode ? `<span class="badge">NAICS ${escapeHtml(opp.naicsCode)}</span>` : ''}
       <span class="badge">Posted ${escapeHtml((opp.postedDate||'').slice(0,10))}</span>
     </div>
@@ -657,3 +740,4 @@ function escapeAttr(s){ return escapeHtml(s); }
 </script>
 </body>
 </html>
+
