@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Set-Aside Search · SAM.gov</title>
+<style>
+  :root{
+    --paper:#F2F4EF;
+    --card:#FFFFFF;
+    --ink:#16243B;
+    --ink-soft:#4B5A6C;
+    --line:#DADFD3;
+    --accent:#B96E1E;
+    --accent-ink:#FFFFFF;
+    --red:#A8362A;
+    --red-bg:#F8E6E3;
+    --amber:#B96E1E;
+    --amber-bg:#F7EADA;
+    --green:#3E7A52;
+    --green-bg:#E5F0E7;
+    --gray-bg:#ECEEEA;
+    --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; background:var(--paper); color:var(--ink); font-family:var(--sans); -webkit-text-size-adjust:100%; }
+  body{ font-size:16px; line-height:1.45; padding-bottom:60px; }
+  .wrap{ max-width:720px; margin:0 auto; padding:20px 16px 0; }
+
+  header{ padding:4px 0 18px; border-bottom:2px solid var(--ink); margin-bottom:18px; }
+  header h1{ font-size:22px; margin:0 0 4px; letter-spacing:-0.01em; }
+  header p{ margin:0; color:var(--ink-soft); font-size:14px; }
+
+  .panel{ background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px; margin-bottom:18px; }
+  .panel h2{ font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--ink-soft); margin:0 0 12px; }
+
+  .field{ margin-bottom:14px; }
+  .field:last-child{ margin-bottom:0; }
+  .field label{ display:block; font-size:13px; font-weight:600; margin-bottom:5px; }
+  .field .hint{ font-size:12px; color:var(--ink-soft); margin-top:4px; }
+  .field input[type=text], .field input[type=password], .field input[type=date], .field input[type=number]{
+    width:100%; padding:10px 11px; border:1px solid var(--line); border-radius:7px;
+    font-size:16px; font-family:var(--sans); background:var(--paper); color:var(--ink);
+  }
+  .field input:focus{ outline:2px solid var(--accent); outline-offset:1px; }
+
+  .row2{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  @media (max-width:480px){ .row2{ grid-template-columns:1fr; } }
+
+  .check-grid{ display:grid; grid-template-columns:1fr 1fr; gap:8px 14px; }
+  @media (max-width:480px){ .check-grid{ grid-template-columns:1fr; } }
+  .check-item{ display:flex; align-items:flex-start; gap:8px; font-size:14px; }
+  .check-item input{ margin-top:3px; flex:none; }
+  .check-item span small{ display:block; color:var(--ink-soft); font-size:11px; }
+
+  .btn{ appearance:none; border:none; border-radius:8px; padding:13px 18px; font-size:15px; font-weight:700;
+    cursor:pointer; font-family:var(--sans); }
+  .btn-primary{ background:var(--ink); color:#fff; width:100%; }
+  .btn-primary:disabled{ background:#9aa3ad; cursor:wait; }
+  .btn-link{ background:none; border:1px solid var(--line); color:var(--ink); padding:7px 12px; font-size:13px; font-weight:600; border-radius:6px; }
+
+  details.adv{ margin-top:14px; }
+  details.adv summary{ cursor:pointer; font-size:13px; font-weight:600; color:var(--ink-soft); }
+
+  #status{ font-size:14px; margin:14px 0; min-height:1px; }
+  #status.loading{ color:var(--ink-soft); }
+  #status.error{ background:var(--red-bg); color:var(--red); padding:12px 14px; border-radius:8px; }
+  #status.empty{ background:var(--gray-bg); color:var(--ink-soft); padding:12px 14px; border-radius:8px; }
+  #status.warn{ background:var(--amber-bg); color:#7a4a16; padding:10px 14px; border-radius:8px; font-size:13px; }
+
+  .results-meta{ font-size:13px; color:var(--ink-soft); margin-bottom:10px; }
+
+  .card{ background:var(--card); border:1px solid var(--line); border-left:5px solid var(--gray-bg);
+    border-radius:9px; padding:14px 14px 12px; margin-bottom:12px; }
+  .card.urgent{ border-left-color:var(--red); }
+  .card.soon{ border-left-color:var(--amber); }
+  .card.open{ border-left-color:var(--green); }
+  .card.closed{ opacity:.6; }
+
+  .card-title{ font-size:15.5px; font-weight:700; margin:0 0 4px; line-height:1.3; }
+  .card-agency{ font-size:12.5px; color:var(--ink-soft); margin-bottom:8px; }
+
+  .meta-row{ display:flex; flex-wrap:wrap; gap:6px 8px; margin-bottom:8px; }
+  .badge{ font-family:var(--mono); font-size:11.5px; padding:3px 7px; border-radius:5px; background:var(--gray-bg); color:var(--ink); white-space:nowrap; }
+  .badge.due-urgent{ background:var(--red-bg); color:var(--red); font-weight:700; }
+  .badge.due-soon{ background:var(--amber-bg); color:var(--amber); font-weight:700; }
+  .badge.due-open{ background:var(--green-bg); color:var(--green); }
+
+  .card-actions{ display:flex; gap:8px; flex-wrap:wrap; margin-top:6px; }
+  .card-actions a.btn-link{ text-decoration:none; }
+  .btn-save{ font-weight:700; }
+  .btn-save.saved{ background:var(--amber-bg); color:var(--amber); border-color:var(--amber-bg); }
+
+  .tabs{ display:flex; gap:8px; margin-bottom:12px; }
+  .tab-btn{ flex:1; padding:10px; border:1px solid var(--line); background:var(--card);
+    border-radius:8px; font-size:13.5px; font-weight:700; color:var(--ink-soft); cursor:pointer; font-family:var(--sans); }
+  .tab-btn.active{ background:var(--ink); color:#fff; border-color:var(--ink); }
+
+  .empty-note{ background:var(--gray-bg); color:var(--ink-soft); padding:12px 14px; border-radius:8px; font-size:14px; }
+
+  .desc-content{ margin-top:10px; padding-top:10px; border-top:1px dashed var(--line); font-size:13.5px;
+    color:var(--ink-soft); white-space:pre-wrap; }
+  .desc-content.loading{ font-style:italic; }
+
+  footer{ max-width:720px; margin:30px auto 0; padding:0 16px; font-size:12px; color:var(--ink-soft); }
+  footer a{ color:var(--ink-soft); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>Set-Aside Search</h1>
+    <p>Searches active SAM.gov solicitations and presolicitations for small-business set-asides. Your API key is saved on this device only — nothing else leaves your browser.</p>
+  </header>
+
+  <form class="panel" id="filterForm">
+    <h2>Search</h2>
+
+    <div class="field">
+      <label for="apiKey">SAM.gov public API key</label>
+      <input type="password" id="apiKey" autocomplete="off" placeholder="Paste your key" required>
+      <div class="hint">Get this from your SAM.gov account: Account Details → Request Public API Key. A registered key allows 1,000 requests/day. Saved on this device after your first search — <button type="button" id="forgetKeyBtn" class="btn-link" style="padding:2px 8px; font-size:11.5px;">forget it</button></div>
+    </div>
+
+    <div class="field">
+      <label for="keyword">Keyword in title (optional)</label>
+      <input type="text" id="keyword" placeholder="e.g. nursing, wellness, training">
+    </div>
+
+    <div class="row2">
+      <div class="field">
+        <label for="naics">NAICS codes (optional)</label>
+        <input type="text" id="naics" placeholder="e.g. 621399, 621330">
+        <div class="hint">Separate multiple codes with commas — each is searched separately.</div>
+      </div>
+      <div class="field">
+        <label for="state">Place of performance state (optional)</label>
+        <input type="text" id="state" placeholder="e.g. CA" maxlength="2" style="text-transform:uppercase">
+      </div>
+    </div>
+
+    <div class="row2">
+      <div class="field">
+        <label for="postedFrom">Posted from</label>
+        <input type="date" id="postedFrom" required>
+      </div>
+      <div class="field">
+        <label for="postedTo">Posted to</label>
+        <input type="date" id="postedTo" required>
+      </div>
+    </div>
+    <div class="hint" style="margin:-8px 0 14px;">SAM.gov requires this range and caps it at 1 year.</div>
+
+    <div class="field">
+      <label>Set-aside types to include</label>
+      <div class="check-grid" id="setAsideGrid"></div>
+      <div class="hint">Sole-source set-asides are pre-decided (no open competition) so they're unchecked by default — check them if you still want to track them.</div>
+    </div>
+
+    <details class="adv">
+      <summary>Advanced filters</summary>
+      <div class="hint" style="margin-top:12px;">Active <strong>Solicitations</strong>, <strong>Presolicitations</strong>, and <strong>Combined Synopsis/Solicitations</strong> are searched. Sources Sought and inactive/archived notices are excluded.</div>
+      <div class="row2" style="margin-top:14px;">
+        <div class="field">
+          <label for="rdlFrom">Response deadline from</label>
+          <input type="date" id="rdlFrom">
+        </div>
+        <div class="field">
+          <label for="rdlTo">Response deadline to</label>
+          <input type="date" id="rdlTo">
+        </div>
+      </div>
+      <div class="field">
+        <label for="perType">Results per filter combination (1–1000)</label>
+        <input type="number" id="perType" value="100" min="1" max="1000">
+        <div class="hint">Each NAICS code × set-aside type is a separate request — more filters checked means more requests counted against your daily limit.</div>
+      </div>
+    </details>
+
+    <div class="field" style="margin-top:18px;">
+      <button type="submit" class="btn btn-primary" id="searchBtn">Search SAM.gov</button>
+    </div>
+  </form>
+
+  <div id="status"></div>
+
+  <div class="tabs">
+    <button type="button" class="tab-btn active" id="tabResults">Search Results</button>
+    <button type="button" class="tab-btn" id="tabSaved">Saved (<span id="savedCount">0</span>)</button>
+  </div>
+
+  <div id="resultsPane">
+    <div id="resultsMeta" class="results-meta"></div>
+    <div id="results"></div>
+  </div>
+
+  <div id="savedPane" style="display:none;">
+    <div id="savedMeta" class="results-meta"></div>
+    <div id="savedList"></div>
+  </div>
+
+  <footer>
+    Data from the <a href="https://open.gsa.gov/api/get-opportunities-public-api/" target="_blank" rel="noopener">SAM.gov Get Opportunities API</a>.
+    Requests go straight from this page to api.sam.gov — if your browser blocks the request (a CORS error in the console), this static page can't fix that on its own and would need a small server-side proxy.
+  </footer>
+</div>
+
+<script>
+const SET_ASIDES = [
+  ["SBA","Total Small Business",true],
+  ["SBP","Partial Small Business",true],
+  ["8A","8(a) Set-Aside",true],
+  ["8AN","8(a) Sole Source",false],
+  ["HZC","HUBZone Set-Aside",true],
+  ["HZS","HUBZone Sole Source",false],
+  ["SDVOSBC","SDVOSB Set-Aside",true],
+  ["SDVOSBS","SDVOSB Sole Source",false],
+  ["WOSB","WOSB Program Set-Aside",true],
+  ["WOSBSS","WOSB Program Sole Source",false],
+  ["EDWOSB","EDWOSB Set-Aside",true],
+  ["EDWOSBSS","EDWOSB Sole Source",false],
+  ["LAS","Local Area Set-Aside",true],
+  ["IEE","Indian Economic Enterprise",false],
+  ["ISBEE","Indian SB Economic Enterprise",false],
+  ["BICiv","Buy Indian Set-Aside",false],
+  ["VSA","Veteran-Owned SB (VA)",true],
+  ["VSS","Veteran-Owned SB Sole Source (VA)",false],
+];
+
+// Fixed scope: notice types that represent something currently open or about
+// to open for bidding. Flip these codes if you want others back.
+const ACTIVE_PTYPES = ['o','p','k']; // o = Solicitation, p = Presolicitation, k = Combined Synopsis/Solicitation
+
+const setAsideGrid = document.getElementById('setAsideGrid');
+SET_ASIDES.forEach(([code,label,checked])=>{
+  const id = 'sa_'+code;
+  const div = document.createElement('label');
+  div.className='check-item';
+  div.innerHTML = `<input type="checkbox" id="${id}" value="${code}" ${checked?'checked':''}><span>${label}<small>${code}</small></span>`;
+  setAsideGrid.appendChild(div);
+});
+
+// Default date range: last 30 days
+const today = new Date();
+const past = new Date(); past.setDate(today.getDate()-30);
+document.getElementById('postedFrom').value = toInputDate(past);
+document.getElementById('postedTo').value = toInputDate(today);
+
+// Restore a previously saved API key, if any
+const apiKeyInput = document.getElementById('apiKey');
+const savedKey = localStorage.getItem('samGovApiKey');
+if(savedKey) apiKeyInput.value = savedKey;
+
+document.getElementById('forgetKeyBtn').addEventListener('click', ()=>{
+  localStorage.removeItem('samGovApiKey');
+  apiKeyInput.value = '';
+  apiKeyInput.focus();
+});
+
+function currentApiKey(){ return apiKeyInput.value.trim(); }
+
+// ---- Saved opportunities (persisted locally on this device) ----
+const SAVED_KEY = 'samGovSavedOpportunities';
+function loadSaved(){
+  try{ return JSON.parse(localStorage.getItem(SAVED_KEY) || '{}'); }
+  catch(e){ return {}; }
+}
+function persistSaved(map){ localStorage.setItem(SAVED_KEY, JSON.stringify(map)); }
+let savedMap = loadSaved();
+
+function trimOpp(opp){
+  return {
+    noticeId: opp.noticeId,
+    title: opp.title || '',
+    solicitationNumber: opp.solicitationNumber || '',
+    fullParentPathName: opp.fullParentPathName || '',
+    postedDate: opp.postedDate || '',
+    responseDeadLine: opp.responseDeadLine || null,
+    typeOfSetAsideDescription: opp.typeOfSetAsideDescription || opp.setAside || null,
+    naicsCode: opp.naicsCode || '',
+    uiLink: opp.uiLink || '',
+    description: opp.description || '',
+    active: opp.active || 'Yes',
+    savedAt: (savedMap[opp.noticeId] && savedMap[opp.noticeId].savedAt) || new Date().toISOString()
+  };
+}
+
+function updateSavedCount(){
+  document.getElementById('savedCount').textContent = Object.keys(savedMap).length;
+}
+updateSavedCount();
+
+const tabResults = document.getElementById('tabResults');
+const tabSaved = document.getElementById('tabSaved');
+const resultsPane = document.getElementById('resultsPane');
+const savedPane = document.getElementById('savedPane');
+
+tabResults.addEventListener('click', ()=>{
+  tabResults.classList.add('active'); tabSaved.classList.remove('active');
+  resultsPane.style.display=''; savedPane.style.display='none';
+});
+tabSaved.addEventListener('click', ()=>{
+  tabSaved.classList.add('active'); tabResults.classList.remove('active');
+  resultsPane.style.display='none'; savedPane.style.display='';
+  renderSavedPane();
+});
+
+async function refreshOne(noticeId){
+  const apiKey = currentApiKey();
+  if(!apiKey) throw new Error('Enter your API key in the search form first.');
+  const wideFrom = new Date(); wideFrom.setFullYear(wideFrom.getFullYear()-1);
+  const p = new URLSearchParams();
+  p.set('api_key', apiKey);
+  p.set('noticeid', noticeId);
+  p.set('limit','1');
+  p.set('offset','0');
+  p.set('postedFrom', toApiDate(toInputDate(wideFrom)));
+  p.set('postedTo', toApiDate(toInputDate(new Date())));
+  const data = await fetchOpportunities(`${API_BASE}?${p.toString()}`);
+  const fresh = (data.opportunitiesData || [])[0];
+  if(fresh){ savedMap[noticeId] = trimOpp(fresh); persistSaved(savedMap); }
+}
+
+function renderSavedPane(){
+  updateSavedCount();
+  const ids = Object.keys(savedMap);
+  const list = document.getElementById('savedList');
+  const meta = document.getElementById('savedMeta');
+  list.innerHTML = '';
+
+  if(!ids.length){
+    meta.textContent = '';
+    list.innerHTML = `<div class="empty-note">No saved opportunities yet — tap ☆ Save on any result to track it here.</div>`;
+    return;
+  }
+
+  meta.innerHTML = `${ids.length} saved opportunit${ids.length===1?'y':'ies'} — ` +
+    `<button type="button" class="btn-link" id="refreshAllBtn" style="padding:3px 9px; font-size:12px;">Refresh all</button>`;
+  document.getElementById('refreshAllBtn').addEventListener('click', async (e)=>{
+    e.target.textContent = 'Refreshing…'; e.target.disabled = true;
+    await Promise.allSettled(Object.keys(savedMap).map(id => refreshOne(id).catch(()=>{})));
+    renderSavedPane();
+  });
+
+  const sorted = ids.map(id=>savedMap[id]).sort((a,b)=>{
+    const da = a.responseDeadLine ? new Date(a.responseDeadLine.replace(' ','T')) : null;
+    const db = b.responseDeadLine ? new Date(b.responseDeadLine.replace(' ','T')) : null;
+    if(da && db) return da - db;
+    if(da) return -1;
+    if(db) return 1;
+    return new Date(b.postedDate) - new Date(a.postedDate);
+  });
+  sorted.forEach(opp => list.appendChild(buildCard(opp, { saveToggle:false, removeBtn:true, refreshBtn:true })));
+}
+
+function toInputDate(d){ return d.toISOString().slice(0,10); }
+function toApiDate(yyyyMmDd){
+  const [y,m,d] = yyyyMmDd.split('-');
+  return `${m}/${d}/${y}`;
+}
+function stripHtml(s){
+  if(!s) return '';
+  return s.replace(/<[^>]*>/g,' ').replace(/&nbsp;/g,' ').replace(/&amp;/g,'&')
+    .replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/\s+\n/g,'\n').replace(/[ \t]{2,}/g,' ').trim();
+}
+
+const API_BASE = 'https://api.sam.gov/opportunities/v2/search';
+const DESC_PROXY_NOTE = 'api_key';
+
+const form = document.getElementById('filterForm');
+const statusEl = document.getElementById('status');
+const resultsEl = document.getElementById('results');
+const metaEl = document.getElementById('resultsMeta');
+const searchBtn = document.getElementById('searchBtn');
+
+function setStatus(text, cls){
+  statusEl.className = cls || '';
+  statusEl.textContent = text || '';
+}
+
+form.addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  resultsEl.innerHTML = '';
+  metaEl.textContent = '';
+  setStatus('','');
+
+  const apiKey = document.getElementById('apiKey').value.trim();
+  if(!apiKey){ setStatus('Enter your SAM.gov API key first.','error'); return; }
+  localStorage.setItem('samGovApiKey', apiKey);
+
+  const postedFrom = document.getElementById('postedFrom').value;
+  const postedTo = document.getElementById('postedTo').value;
+  if(!postedFrom || !postedTo){ setStatus('Posted-from and posted-to dates are required by SAM.gov.','error'); return; }
+  const daysApart = (new Date(postedTo) - new Date(postedFrom)) / 86400000;
+  if(daysApart < 0){ setStatus('Posted-to must be after posted-from.','error'); return; }
+  if(daysApart > 366){ setStatus('SAM.gov caps the posted date range at 1 year. Narrow it and try again.','error'); return; }
+
+  const keyword = document.getElementById('keyword').value.trim();
+  const naicsRaw = document.getElementById('naics').value.trim();
+  const naicsCodes = naicsRaw ? naicsRaw.split(/[,\s]+/).map(s=>s.trim()).filter(Boolean) : [];
+  const invalidNaics = naicsCodes.filter(c => !/^\d{2,6}$/.test(c));
+  if(invalidNaics.length){
+    setStatus(`NAICS codes must be 2–6 digits. Check: ${invalidNaics.join(', ')}`, 'error');
+    return;
+  }
+  const state = document.getElementById('state').value.trim();
+  const rdlFrom = document.getElementById('rdlFrom').value;
+  const rdlTo = document.getElementById('rdlTo').value;
+  const perType = Math.min(1000, Math.max(1, parseInt(document.getElementById('perType').value || '100', 10)));
+
+  const ptypeCodes = ACTIVE_PTYPES;
+  const setAsideCodes = SET_ASIDES.map(s=>s[0]).filter(code=>document.getElementById('sa_'+code).checked);
+
+  const baseParams = new URLSearchParams();
+  baseParams.set('api_key', apiKey);
+  baseParams.set('postedFrom', toApiDate(postedFrom));
+  baseParams.set('postedTo', toApiDate(postedTo));
+  baseParams.set('limit', String(perType));
+  baseParams.set('offset', '0');
+  if(keyword) baseParams.set('title', keyword);
+  if(state) baseParams.set('state', state);
+  if(rdlFrom) baseParams.set('rdlfrom', toApiDate(rdlFrom));
+  if(rdlTo) baseParams.set('rdlto', toApiDate(rdlTo));
+  ptypeCodes.forEach(code => baseParams.append('ptype', code));
+
+  // Build one request per NAICS code x set-aside combo (the API only accepts a
+  // single value of each per call), or skip a dimension entirely if unset.
+  const naicsList = naicsCodes.length ? naicsCodes : [null];
+  const setAsideList = setAsideCodes.length ? setAsideCodes : [null];
+  const combos = [];
+  naicsList.forEach(naicsCode => setAsideList.forEach(saCode => combos.push({ naicsCode, saCode })));
+
+  if(combos.length > 40){
+    const proceed = confirm(
+      `This search is ${naicsList.length} NAICS code(s) × ${setAsideList.length} set-aside type(s) = ${combos.length} requests to SAM.gov. ` +
+      `That eats into your daily limit fast — continue anyway?`
+    );
+    if(!proceed){ return; }
+  }
+
+  const requests = combos.map(({naicsCode, saCode})=>{
+    const p = new URLSearchParams(baseParams);
+    if(naicsCode) p.set('ncode', naicsCode);
+    if(saCode) p.set('typeOfSetAside', saCode);
+    const label = [naicsCode ? `NAICS ${naicsCode}` : null, saCode || null].filter(Boolean).join(' / ') || 'All types';
+    return { label, url: `${API_BASE}?${p.toString()}` };
+  });
+
+  searchBtn.disabled = true;
+  searchBtn.textContent = 'Searching…';
+  setStatus(`Querying SAM.gov (${requests.length} request${requests.length>1?'s':''})…`, 'loading');
+
+  const settled = await Promise.allSettled(requests.map(r => fetchOpportunities(r.url)));
+
+  searchBtn.disabled = false;
+  searchBtn.textContent = 'Search SAM.gov';
+
+  let merged = new Map();
+  let truncatedTypes = [];
+  let hardErrors = [];
+
+  settled.forEach((res, i)=>{
+    const label = requests[i].label;
+    if(res.status === 'fulfilled'){
+      const data = res.value;
+      (data.opportunitiesData || []).forEach(opp => {
+        if(opp.active === 'No') return; // belt-and-suspenders: drop anything not currently active
+        merged.set(opp.noticeId, opp);
+      });
+      if(typeof data.totalRecords === 'number' && data.totalRecords > perType){
+        truncatedTypes.push(`${label} (${data.totalRecords} found, showing ${perType})`);
+      }
+    } else {
+      hardErrors.push(`${label}: ${res.reason && res.reason.message ? res.reason.message : res.reason}`);
+    }
+  });
+
+  if(merged.size === 0 && hardErrors.length === requests.length){
+    setStatus(
+      'Every request failed. Most likely causes: an invalid/expired API key, a SAM.gov rate limit, or your browser blocking the cross-origin request (CORS). ' +
+      'Details: ' + hardErrors.join(' | '),
+      'error'
+    );
+    return;
+  }
+
+  if(merged.size === 0){
+    setStatus('No opportunities matched these filters in this date range.', 'empty');
+    return;
+  }
+
+  if(hardErrors.length){
+    setStatus('Some filter combinations failed to load: ' + hardErrors.join(' | '), 'warn');
+  } else {
+    setStatus('','');
+  }
+
+  const list = Array.from(merged.values()).sort((a,b)=>{
+    const da = a.responseDeadLine ? new Date(a.responseDeadLine.replace(' ','T')) : null;
+    const db = b.responseDeadLine ? new Date(b.responseDeadLine.replace(' ','T')) : null;
+    if(da && db) return da - db;
+    if(da) return -1;
+    if(db) return 1;
+    return new Date(b.postedDate) - new Date(a.postedDate);
+  });
+
+  metaEl.textContent = `${list.length} unique opportunit${list.length===1?'y':'ies'} found.` +
+    (truncatedTypes.length ? ` More available than shown for: ${truncatedTypes.join('; ')}.` : '');
+
+  renderResults(list);
+});
+
+async function fetchOpportunities(url){
+  let res;
+  try{
+    res = await fetch(url);
+  }catch(err){
+    throw new Error('network/CORS failure');
+  }
+  if(!res.ok){
+    let msg = `HTTP ${res.status}`;
+    try{ const j = await res.json(); if(j && j.title) msg += ` – ${j.title}`; }catch(_){}
+    throw new Error(msg);
+  }
+  return res.json();
+}
+
+function dueInfo(deadlineStr){
+  if(!deadlineStr) return { cls:'', badgeCls:'', text:'No deadline listed' };
+  const d = new Date(deadlineStr.replace(' ','T'));
+  if(isNaN(d)) return { cls:'', badgeCls:'', text:deadlineStr };
+  const days = Math.ceil((d - new Date())/86400000);
+  const text = d.toLocaleDateString(undefined,{ month:'short', day:'numeric', year:'numeric' });
+  if(days < 0) return { cls:'closed', badgeCls:'', text:`Closed ${text}` };
+  if(days <= 3) return { cls:'urgent', badgeCls:'due-urgent', text:`Due ${text} (${days}d)` };
+  if(days <= 10) return { cls:'soon', badgeCls:'due-soon', text:`Due ${text} (${days}d)` };
+  return { cls:'open', badgeCls:'due-open', text:`Due ${text} (${days}d)` };
+}
+
+function renderResults(list){
+  resultsEl.innerHTML = '';
+  list.forEach(opp => resultsEl.appendChild(buildCard(opp, { saveToggle:true, removeBtn:false, refreshBtn:false })));
+}
+
+function buildCard(opp, opts){
+  const due = dueInfo(opp.responseDeadLine);
+  const setAsideLabel = opp.typeOfSetAsideDescription || opp.setAside || 'No set-aside listed';
+  const isSaved = !!savedMap[opp.noticeId];
+  const card = document.createElement('div');
+  card.className = `card ${due.cls}`;
+  card.innerHTML = `
+    <p class="card-title">${escapeHtml(opp.title || 'Untitled notice')}</p>
+    <p class="card-agency">${escapeHtml(opp.fullParentPathName || '')}</p>
+    <div class="meta-row">
+      <span class="badge">${escapeHtml(opp.solicitationNumber ? opp.solicitationNumber.trim() : 'No solicitation #')}</span>
+      <span class="badge ${due.badgeCls}">${escapeHtml(due.text)}</span>
+      <span class="badge">${escapeHtml(setAsideLabel)}</span>
+      ${opp.naicsCode ? `<span class="badge">NAICS ${escapeHtml(opp.naicsCode)}</span>` : ''}
+      <span class="badge">Posted ${escapeHtml((opp.postedDate||'').slice(0,10))}</span>
+    </div>
+    <div class="card-actions">
+      ${opp.uiLink ? `<a class="btn-link" href="${escapeAttr(opp.uiLink)}" target="_blank" rel="noopener">View on SAM.gov</a>` : ''}
+      ${opp.description ? `<button type="button" class="btn-link desc-toggle">Show description</button>` : ''}
+      ${opts.saveToggle ? `<button type="button" class="btn-link btn-save ${isSaved?'saved':''}">${isSaved?'★ Saved':'☆ Save'}</button>` : ''}
+      ${opts.refreshBtn ? `<button type="button" class="btn-link btn-refresh">Refresh</button>` : ''}
+      ${opts.removeBtn ? `<button type="button" class="btn-link btn-remove">Remove</button>` : ''}
+    </div>
+  `;
+
+  const toggleBtn = card.querySelector('.desc-toggle');
+  if(toggleBtn) toggleBtn.addEventListener('click', ()=> loadDescription(opp, card, toggleBtn));
+
+  const saveBtn = card.querySelector('.btn-save');
+  if(saveBtn){
+    saveBtn.addEventListener('click', ()=>{
+      if(savedMap[opp.noticeId]){
+        delete savedMap[opp.noticeId];
+        saveBtn.textContent = '☆ Save';
+        saveBtn.classList.remove('saved');
+      } else {
+        savedMap[opp.noticeId] = trimOpp(opp);
+        saveBtn.textContent = '★ Saved';
+        saveBtn.classList.add('saved');
+      }
+      persistSaved(savedMap);
+      updateSavedCount();
+    });
+  }
+
+  const removeBtn = card.querySelector('.btn-remove');
+  if(removeBtn){
+    removeBtn.addEventListener('click', ()=>{
+      delete savedMap[opp.noticeId];
+      persistSaved(savedMap);
+      renderSavedPane();
+    });
+  }
+
+  const refreshBtn = card.querySelector('.btn-refresh');
+  if(refreshBtn){
+    refreshBtn.addEventListener('click', async ()=>{
+      refreshBtn.textContent = 'Refreshing…';
+      refreshBtn.disabled = true;
+      try{ await refreshOne(opp.noticeId); }
+      catch(err){ alert(err.message || 'Could not refresh this notice right now.'); }
+      renderSavedPane();
+    });
+  }
+
+  return card;
+}
+
+async function loadDescription(opp, card, btn){
+  const existing = card.querySelector('.desc-content');
+  if(existing){ existing.remove(); btn.textContent = 'Show description'; return; }
+
+  btn.textContent = 'Loading…';
+  btn.disabled = true;
+  const box = document.createElement('div');
+  box.className = 'desc-content loading';
+  box.textContent = 'Fetching description…';
+  card.appendChild(box);
+
+  try{
+    const sep = opp.description.includes('?') ? '&' : '?';
+    const url = `${opp.description}${sep}${DESC_PROXY_NOTE}=${encodeURIComponent(currentApiKey())}`;
+    const res = await fetch(url);
+    let text = '';
+    if(res.ok){
+      const ct = res.headers.get('content-type') || '';
+      if(ct.includes('application/json')){
+        const j = await res.json();
+        text = j.description || j.message || JSON.stringify(j);
+      } else {
+        text = await res.text();
+      }
+    } else {
+      text = `Couldn't load description (HTTP ${res.status}).`;
+    }
+    box.textContent = stripHtml(text) || 'No description text was returned for this notice.';
+    box.classList.remove('loading');
+    btn.textContent = 'Hide description';
+  }catch(err){
+    box.textContent = 'Description failed to load (network or CORS issue).';
+    box.classList.remove('loading');
+    btn.textContent = 'Show description';
+  }
+  btn.disabled = false;
+}
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function escapeAttr(s){ return escapeHtml(s); }
+</script>
+</body>
+</html>
